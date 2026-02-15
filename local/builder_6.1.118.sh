@@ -25,6 +25,8 @@ read -p "是否启用网络功能增强优化配置？(y/n，默认：y): " APPL
 APPLY_BETTERNET=${APPLY_BETTERNET:-y}
 read -p "是否添加 BBR 等一系列拥塞控制算法？(y添加/n禁用/d默认，默认：n): " APPLY_BBR
 APPLY_BBR=${APPLY_BBR:-n}
+read -p "Enable Lazy RCU + WQ power efficient (y/n, default:y): " APPLY_LAZY_WQ_PE
+APPLY_LAZY_WQ_PE=${APPLY_LAZY_WQ_PE:-y}
 read -p "是否启用三星SSG IO调度器？(y/n，默认：y): " APPLY_SSG
 APPLY_SSG=${APPLY_SSG:-y}
 read -p "是否启用Re-Kernel？(y/n，默认：n): " APPLY_REKERNEL
@@ -65,6 +67,7 @@ echo "应用 lz4&zstd 补丁: $APPLY_LZ4"
 echo "应用 lz4kd 补丁: $APPLY_LZ4KD"
 echo "应用网络功能增强优化配置: $APPLY_BETTERNET"
 echo "应用 BBR 等算法: $APPLY_BBR"
+echo "Enable Lazy RCU + WQ power efficient: $APPLY_LAZY_WQ_PE"
 echo "启用三星SSG IO调度器: $APPLY_SSG"
 echo "启用Re-Kernel: $APPLY_REKERNEL"
 echo "启用内核级基带保护: $APPLY_BBG"
@@ -353,6 +356,14 @@ echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG_FILE"
 echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG_FILE"
 #跳过将uapi标准头安装到 usr/include 目录的不必要操作，节省编译时间
 echo "CONFIG_HEADERS_INSTALL=n" >> "$DEFCONFIG_FILE"
+
+# Lazy RCU + power-efficient workqueue defaults
+if [[ "$APPLY_LAZY_WQ_PE" == "y" || "$APPLY_LAZY_WQ_PE" == "Y" ]]; then
+  echo "CONFIG_RCU_NOCB_CPU=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_RCU_LAZY=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_RCU_LAZY_DEFAULT_OFF=n" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y" >> "$DEFCONFIG_FILE"
+fi
 
 # 仅在启用了 KPM 时添加 KPM 支持
 if [[ "$USE_PATCH_LINUX" == [bB] && $KSU_BRANCH == [yYrR] ]]; then

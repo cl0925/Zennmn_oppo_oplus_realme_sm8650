@@ -54,6 +54,11 @@ on:
           - 'false'
           - 'true'
           - 'default'
+      lazy_rcu_wq_pe:
+        description: '是否启用 Lazy RCU + WQ power efficient'
+        required: true
+        type: boolean
+        default: 'true'
       better_net:
         description: '是否开启网络功能拓展配置(用于为ipset及需要iptables等高级网络功能内核支持的程序提供支持)'
         required: true
@@ -459,6 +464,12 @@ jobs:
           sed -i 's/check_defconfig//' ./common/build.config.gki
           #跳过将uapi标准头安装到 usr/include 目录的不必要操作，节省编译时间
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+          if [[ "${{ github.event.inputs.lazy_rcu_wq_pe }}" == "true" ]]; then
+            echo "CONFIG_RCU_NOCB_CPU=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_RCU_LAZY=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_RCU_LAZY_DEFAULT_OFF=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
           
       - name: 启用网络功能增强优化配置
         if: inputs.better_net
@@ -786,6 +797,7 @@ jobs:
             - LZ4KD支持：${{ github.event.inputs.lz4kd_enable }}
             - 网络功能增强：${{ github.event.inputs.better_net }}
             - BBR/Brutal 等拥塞控制算法支持：${{ github.event.inputs.bbr_enable }}
+            - Lazy RCU + WQ power efficient：${{ github.event.inputs.lazy_rcu_wq_pe }}
             - 三星SSG IO调度器支持：${{ github.event.inputs.ssg_enable }}
             - Re-Kernel支持：${{ github.event.inputs.rekernel_enable }}
             - 内核级基带保护支持：${{ github.event.inputs.baseband_guard }}
