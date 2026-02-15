@@ -59,6 +59,21 @@ on:
         required: true
         type: boolean
         default: 'true'
+      disable_kasan:
+        description: '是否禁用 KASAN(省电/性能优化, 会损失内存调试能力)'
+        required: true
+        type: boolean
+        default: 'false'
+      disable_pm_debug:
+        description: '是否禁用 PM_DEBUG/PM_ADVANCED_DEBUG(省电)'
+        required: true
+        type: boolean
+        default: 'false'
+      enable_wakelocks_gc:
+        description: '是否启用 PM_WAKELOCKS_GC(减少无效 wakelock 累积)'
+        required: true
+        type: boolean
+        default: 'false'
       better_net:
         description: '是否开启网络功能拓展配置(用于为ipset及需要iptables等高级网络功能内核支持的程序提供支持)'
         required: true
@@ -470,6 +485,17 @@ jobs:
             echo "CONFIG_RCU_LAZY_DEFAULT_OFF=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+          if [[ "${{ github.event.inputs.disable_kasan }}" == "true" ]]; then
+            echo "# CONFIG_KASAN is not set" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "# CONFIG_KASAN_HW_TAGS is not set" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          if [[ "${{ github.event.inputs.disable_pm_debug }}" == "true" ]]; then
+            echo "# CONFIG_PM_DEBUG is not set" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "# CONFIG_PM_ADVANCED_DEBUG is not set" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          if [[ "${{ github.event.inputs.enable_wakelocks_gc }}" == "true" ]]; then
+            echo "CONFIG_PM_WAKELOCKS_GC=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
           
       - name: 启用网络功能增强优化配置
         if: inputs.better_net
@@ -798,6 +824,9 @@ jobs:
             - 网络功能增强：${{ github.event.inputs.better_net }}
             - BBR/Brutal 等拥塞控制算法支持：${{ github.event.inputs.bbr_enable }}
             - Lazy RCU + WQ power efficient：${{ github.event.inputs.lazy_rcu_wq_pe }}
+            - 禁用 KASAN：${{ github.event.inputs.disable_kasan }}
+            - 禁用 PM_DEBUG：${{ github.event.inputs.disable_pm_debug }}
+            - 启用 PM_WAKELOCKS_GC：${{ github.event.inputs.enable_wakelocks_gc }}
             - 三星SSG IO调度器支持：${{ github.event.inputs.ssg_enable }}
             - Re-Kernel支持：${{ github.event.inputs.rekernel_enable }}
             - 内核级基带保护支持：${{ github.event.inputs.baseband_guard }}

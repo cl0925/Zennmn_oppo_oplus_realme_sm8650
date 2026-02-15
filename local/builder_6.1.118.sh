@@ -27,6 +27,12 @@ read -p "是否添加 BBR 等一系列拥塞控制算法？(y添加/n禁用/d默
 APPLY_BBR=${APPLY_BBR:-n}
 read -p "Enable Lazy RCU + WQ power efficient (y/n, default:y): " APPLY_LAZY_WQ_PE
 APPLY_LAZY_WQ_PE=${APPLY_LAZY_WQ_PE:-y}
+read -p "Disable KASAN for better battery/perf (y/n, default:n): " APPLY_DISABLE_KASAN
+APPLY_DISABLE_KASAN=${APPLY_DISABLE_KASAN:-n}
+read -p "Disable PM debug for better battery (y/n, default:n): " APPLY_DISABLE_PM_DEBUG
+APPLY_DISABLE_PM_DEBUG=${APPLY_DISABLE_PM_DEBUG:-n}
+read -p "Enable PM wakelocks GC (y/n, default:n): " APPLY_WAKELOCKS_GC
+APPLY_WAKELOCKS_GC=${APPLY_WAKELOCKS_GC:-n}
 read -p "是否启用三星SSG IO调度器？(y/n，默认：y): " APPLY_SSG
 APPLY_SSG=${APPLY_SSG:-y}
 read -p "是否启用Re-Kernel？(y/n，默认：n): " APPLY_REKERNEL
@@ -68,6 +74,9 @@ echo "应用 lz4kd 补丁: $APPLY_LZ4KD"
 echo "应用网络功能增强优化配置: $APPLY_BETTERNET"
 echo "应用 BBR 等算法: $APPLY_BBR"
 echo "Enable Lazy RCU + WQ power efficient: $APPLY_LAZY_WQ_PE"
+echo "Disable KASAN: $APPLY_DISABLE_KASAN"
+echo "Disable PM debug: $APPLY_DISABLE_PM_DEBUG"
+echo "Enable PM wakelocks GC: $APPLY_WAKELOCKS_GC"
 echo "启用三星SSG IO调度器: $APPLY_SSG"
 echo "启用Re-Kernel: $APPLY_REKERNEL"
 echo "启用内核级基带保护: $APPLY_BBG"
@@ -363,6 +372,20 @@ if [[ "$APPLY_LAZY_WQ_PE" == "y" || "$APPLY_LAZY_WQ_PE" == "Y" ]]; then
   echo "CONFIG_RCU_LAZY=y" >> "$DEFCONFIG_FILE"
   echo "CONFIG_RCU_LAZY_DEFAULT_OFF=n" >> "$DEFCONFIG_FILE"
   echo "CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y" >> "$DEFCONFIG_FILE"
+fi
+
+if [[ "$APPLY_DISABLE_KASAN" == "y" || "$APPLY_DISABLE_KASAN" == "Y" ]]; then
+  echo "# CONFIG_KASAN is not set" >> "$DEFCONFIG_FILE"
+  echo "# CONFIG_KASAN_HW_TAGS is not set" >> "$DEFCONFIG_FILE"
+fi
+
+if [[ "$APPLY_DISABLE_PM_DEBUG" == "y" || "$APPLY_DISABLE_PM_DEBUG" == "Y" ]]; then
+  echo "# CONFIG_PM_DEBUG is not set" >> "$DEFCONFIG_FILE"
+  echo "# CONFIG_PM_ADVANCED_DEBUG is not set" >> "$DEFCONFIG_FILE"
+fi
+
+if [[ "$APPLY_WAKELOCKS_GC" == "y" || "$APPLY_WAKELOCKS_GC" == "Y" ]]; then
+  echo "CONFIG_PM_WAKELOCKS_GC=y" >> "$DEFCONFIG_FILE"
 fi
 
 # 仅在启用了 KPM 时添加 KPM 支持
