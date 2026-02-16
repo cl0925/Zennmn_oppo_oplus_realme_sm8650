@@ -54,6 +54,16 @@ on:
           - 'false'
           - 'true'
           - 'default'
+      bbrv3_auto:
+        description: '是否自动尝试移植 BBRv3 (google/bbr)'
+        required: true
+        type: boolean
+        default: 'false'
+      bbrv3_tag:
+        description: 'BBRv3 来源 tag/branch (默认 bbrv3-2025-03-18)'
+        required: false
+        type: string
+        default: 'bbrv3-2025-03-18'
       lazy_rcu_wq_pe:
         description: '是否启用 Lazy RCU + WQ power efficient'
         required: true
@@ -533,11 +543,44 @@ jobs:
           wget https://github.com/cctv18/oppo_oplus_realme_sm8650/raw/refs/heads/main/other_patch/config.patch
           patch -p1 -F 3 < config.patch || true
 
+      - name: 自动尝试移植 BBRv3
+        if: inputs.bbrv3_auto && inputs.bbr_enable != 'false'
+        run: |
+          set -e
+          cd kernel_workspace
+          BBRV3_REF="${{ github.event.inputs.bbrv3_tag }}"
+          if [[ -z "$BBRV3_REF" ]]; then
+            BBRV3_REF="bbrv3-2025-03-18"
+          fi
+          echo "正在尝试移植 BBRv3，来源: $BBRV3_REF"
+          if ! git clone --depth=1 --branch "$BBRV3_REF" https://github.com/google/bbr.git bbrv3-src; then
+            echo "::warning::未找到 ref=$BBRV3_REF，回退到 v3 分支"
+            git clone --depth=1 --branch v3 https://github.com/google/bbr.git bbrv3-src
+          fi
+          for rel in net/ipv4/tcp_bbr.c include/uapi/linux/inet_diag.h; do
+            if [[ -f "bbrv3-src/$rel" && -f "common/$rel" ]]; then
+              cp "bbrv3-src/$rel" "common/$rel"
+              echo "已同步: $rel"
+            else
+              echo "::warning::缺少文件，跳过: $rel"
+            fi
+          done
+          if grep -Eq "inflight_hi|bw_hi|loss_in_round|bw_probe_up_rounds" common/net/ipv4/tcp_bbr.c; then
+            echo "BBRV3_PATCHED=true" >> $GITHUB_ENV
+            echo "BBRv3 特征符号检测通过"
+          else
+            echo "::error::未检测到 BBRv3 特征符号，终止构建"
+            exit 1
+          fi
+
       - name: 添加 BBR 等一系列拥塞控制算法
         run: |
           if [[ "${{ github.event.inputs.bbr_enable }}" != "false" ]]; then
             echo "正在添加BBR等拥塞控制算法..."
             cd kernel_workspace
+            if [[ "${BBRV3_PATCHED}" == "true" ]]; then
+              echo "已启用 BBRv3 自动移植"
+            fi
             #开启TCP拥塞控制算法控制器（必需）
             echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
             ################################################################################################################################
@@ -823,6 +866,7 @@ jobs:
             - LZ4KD支持：${{ github.event.inputs.lz4kd_enable }}
             - 网络功能增强：${{ github.event.inputs.better_net }}
             - BBR/Brutal 等拥塞控制算法支持：${{ github.event.inputs.bbr_enable }}
+            - BBRv3 自动移植：${{ github.event.inputs.bbrv3_auto }} (${{ github.event.inputs.bbrv3_tag }})
             - Lazy RCU + WQ power efficient：${{ github.event.inputs.lazy_rcu_wq_pe }}
             - 禁用 KASAN：${{ github.event.inputs.disable_kasan }}
             - 禁用 PM_DEBUG：${{ github.event.inputs.disable_pm_debug }}
