@@ -590,7 +590,7 @@ jobs:
                 print "#define TCP_ECN_LOW 0"
                 print "#endif"
                 print "#ifndef TCP_ECN_ECT_PERMANENT"
-                print "#define TCP_ECN_ECT_PERMANENT TCP_ECN_ECT_0"
+                print "#define TCP_ECN_ECT_PERMANENT 0"
                 print "#endif"
                 print "#ifndef CA_EVENT_TLP_RECOVERY"
                 print "#define CA_EVENT_TLP_RECOVERY ((enum tcp_ca_event)-1)"
