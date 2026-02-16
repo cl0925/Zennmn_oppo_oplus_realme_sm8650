@@ -109,6 +109,12 @@ on:
         required: true
         type: boolean
         default: 'false'
+
+      fast_test_only:
+        description: '????????? BBR ????????????????'
+        required: true
+        type: boolean
+        default: 'false'
       kernel_suffix:
         description: '内核后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
         required: false
@@ -719,8 +725,21 @@ jobs:
               sed -i "\$s|echo \"\\\$res\"|echo \"-${{ env.KERNEL_NAME }}\"|" "$f"
             done
           fi
-           
+
+      - name: BBRv3 快速编译检查 (tcp_bbr.o)
+        if: inputs.bbrv3_auto && inputs.bbr_enable != 'false'
+        run: |
+          WORKDIR="$(pwd)"
+          export PATH="/usr/lib/ccache:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/clang20/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          cd kernel_workspace/common
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error net/ipv4/tcp_bbr.o
+          echo "BBRv3 quick compile check passed"
+
       - name: 构建内核
+        if: inputs.fast_test_only != 'true'
         run: |
           WORKDIR="$(pwd)"
           export PATH="/usr/lib/ccache:$PATH"
@@ -804,6 +823,7 @@ jobs:
           df -h
          
       - name: 应用KPM并修补内核
+        if: inputs.fast_test_only != 'true'
         run: |
           if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
             echo "正在应用KPM并修补内核..."
@@ -816,6 +836,7 @@ jobs:
           fi
           
       - name: 克隆 AnyKernel3 并打包
+        if: inputs.fast_test_only != 'true'
         run: |
           cd kernel_workspace
           git clone https://github.com/cctv18/AnyKernel3 --depth=1
@@ -859,12 +880,14 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/ccache.log
 
       - name: 上传 ZIP 工件
+        if: inputs.fast_test_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Kernel_ZIP_Artifacts
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
 
   release:
+    if: github.event.inputs.fast_test_only != 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
