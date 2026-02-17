@@ -1,4 +1,4 @@
-name: test加速版构建 6.1.57 欧加真OKI内核
+name: 00加速版构建 6.1.118 欧加真OKI内核
 
 env:
   TZ: Asia/Shanghai
@@ -25,7 +25,7 @@ on:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
         type: boolean
-        default: 'true'
+        default: 'false'
       kpm_enable:
         description: '是否开启kpm(builtin-使用(re)sukisu内置kpm, kpn-使用独立kpm实现(支持任意KSU/面具环境); 不需要可保持默认关闭)'
         required: true
@@ -45,6 +45,11 @@ on:
         required: true
         type: boolean
         default: 'false'
+      zram_writeback_enable:
+        description: '是否启用 zram writeback 支持(默认开启)'
+        required: true
+        type: boolean
+        default: 'true'
       bbr_enable:
         description: '是否启用bbr算法(优化上行数据,对手机日用无太大意义甚至可能负优化;false关闭,true仅加入算法,default设为默认)'
         required: true
@@ -320,8 +325,14 @@ jobs:
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
 
-      - name: 应用 KernelSU & SUSFS 补丁
+      - name: SUSFS upstream 状态检查
         if: inputs.susfs_enable
+        run: |
+          echo "::warning::susfs upstream currently unstable on 6.1.118, force disabling susfs for this run"
+          echo "SUSFS_FORCE_DISABLE=true" >> $GITHUB_ENV
+
+      - name: 应用 KernelSU & SUSFS 补丁
+        if: inputs.susfs_enable && env.SUSFS_FORCE_DISABLE != 'true'
         run: |
           cd kernel_workspace
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
@@ -333,8 +344,6 @@ jobs:
             cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             cd ./common
             patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            #临时修复task_mmu.c在部分内核版本补丁后找不到show_pad方法的问题
-            sed -i 's/goto show_pad;/return 0;/g' ./fs/proc/task_mmu.c
             patch -p1 < 69_hide_stuff.patch || true
           elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
             echo "正在添加ReSukiSU补丁..."
@@ -345,8 +354,6 @@ jobs:
             cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             cd ./common
             patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            #临时修复task_mmu.c在部分内核版本补丁后找不到show_pad方法的问题
-            sed -i 's/goto show_pad;/return 0;/g' ./fs/proc/task_mmu.c
             patch -p1 < 69_hide_stuff.patch || true
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
             echo "正在添加KernelSU Next补丁..."
@@ -357,8 +364,6 @@ jobs:
             cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             cd ./common
             patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            #临时修复task_mmu.c在部分内核版本补丁后找不到show_pad方法的问题
-            sed -i 's/goto show_pad;/return 0;/g' ./fs/proc/task_mmu.c
             patch -p1 -N -F 3 < 69_hide_stuff.patch || true
           elif [[ ${{ github.event.inputs.ksu_type }} == "mksu" ]]; then
             echo "正在为 MKSU (5ec1cff/KernelSU)添加补丁..."
@@ -392,8 +397,6 @@ jobs:
             patch -p1 < mksu_supercalls.patch || true
             cd ../common
             patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            #临时修复task_mmu.c在部分内核版本补丁后找不到show_pad方法的问题
-            sed -i 's/goto show_pad;/return 0;/g' ./fs/proc/task_mmu.c
             patch -p1 -N -F 3 < 69_hide_stuff.patch || true
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
             echo "正在为原版 KernelSU (tiann/KernelSU)添加补丁..."
@@ -424,8 +427,6 @@ jobs:
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
             cd ../common
             patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            #临时修复task_mmu.c在部分内核版本补丁后找不到show_pad方法的问题
-            sed -i 's/goto show_pad;/return 0;/g' ./fs/proc/task_mmu.c
             patch -p1 -N -F 3 < 69_hide_stuff.patch || true
           else
             echo "已选择无内置KernelSU模式，跳过susfs配置..."
@@ -806,6 +807,14 @@ jobs:
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="3G"
           echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "$CCACHE_DIR/ccache.conf"
+
+          if [[ "${{ github.event.inputs.fast_test_only }}" == "true" ]]; then
+            echo "快速测试模式：仅执行内核编译，跳过打包发布相关流程"
+            cd kernel_workspace/common
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+            exit 0
+          fi
           
           cd kernel_workspace/common
           wget https://github.com/cctv18/oppo_oplus_realme_sm8650/raw/refs/heads/main/lib/libfakestat.so
@@ -868,6 +877,7 @@ jobs:
           df -h
          
       - name: 应用KPM并修补内核
+        if: inputs.fast_test_only != 'true'
         run: |
           if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
             echo "正在应用KPM并修补内核..."
@@ -880,6 +890,7 @@ jobs:
           fi
           
       - name: 克隆 AnyKernel3 并打包
+        if: inputs.fast_test_only != 'true'
         run: |
           cd kernel_workspace
           git clone https://github.com/cctv18/AnyKernel3 --depth=1
@@ -923,12 +934,14 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/ccache.log
 
       - name: 上传 ZIP 工件
+        if: inputs.fast_test_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Kernel_ZIP_Artifacts
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
 
   release:
+    if: github.event.inputs.fast_test_only != 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -985,7 +998,7 @@ jobs:
             ### 📱 欧加真 ${{ env.KSU_TYPENAME }} SM8650 通用内核 | 构建信息
             - 内核版本号: ${{ env.FULL_VERSION }}
             - 编译时间: ${{ env.TIME_FORM }}
-            - 机型：欧加真骁龙8Gen3通用 6.1.118 内核（基于一加12 6.1.118 Android 15 版官方OKI源码）
+            - 机型：欧加真骁龙8Gen3通用 6.1.57 内核（基于一加12 6.1.57 Android 14 版官方OKI源码）
             - KSU分支：${{ env.KSU_TYPENAME }}
             - susfs支持 (仅对sukisu生效)：${{ github.event.inputs.susfs_enable }}
             - KPM支持 ：${{ github.event.inputs.kpm_enable }}
